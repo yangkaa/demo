@@ -90,8 +90,12 @@ func handler(w http.ResponseWriter, req *http.Request) {
 
 	// Make a request to serviceB
 	url := "http://localhost:8081"
+	protocol := "http://"
+	if os.Getenv("PROTOCOL") != "" {
+		protocol = os.Getenv("PROTOCOL")
+	}
 	if os.Getenv("SERVICE_B_HOST") != "" && os.Getenv("SERVICE_B_PORT") != "" {
-		url = fmt.Sprintf("%s:%s", os.Getenv("SERVICE_B_HOST"), os.Getenv("SERVICE_B_PORT"))
+		url = fmt.Sprintf("%s%s:%s", protocol, os.Getenv("SERVICE_B_HOST"), os.Getenv("SERVICE_B_PORT"))
 	}
 	clientReq, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
