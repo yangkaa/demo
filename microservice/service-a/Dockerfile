@@ -1,5 +1,5 @@
 # 设置基础镜像为golang:alpin
-FROM registry.cn-hangzhou.aliyuncs.com/yangkaa/golang:alpine
+FROM registry.cn-hangzhou.aliyuncs.com/yangkaa/golang:alpine as builder
 
 WORKDIR /app
 
