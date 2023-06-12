@@ -103,7 +103,7 @@ func handler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-
+	clientReq.Header.Add("X-Request-ID", req.Header.Get("X-Request-ID"))
 	serviceCResp := makeRequest(clientReq, "serviceC")
 
 	// Process the request or perform any operations
