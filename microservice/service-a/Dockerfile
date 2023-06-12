@@ -15,4 +15,6 @@ WORKDIR /app
 
 COPY --from=builder /app/service-a .
 
+ENV PORT 8080
+
 ENTRYPOINT ["./service-a"]

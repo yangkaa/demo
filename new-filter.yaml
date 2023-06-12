@@ -1,0 +1,102 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  creationTimestamp: "2023-05-15T08:50:12Z"
+  generation: 18
+  labels:
+    app_id: ea2c2fbca187449498536c2e74d910cf
+  name: micro-yk
+  namespace: zhangqh
+  resourceVersion: "11358832"
+  uid: 646ec28f-086f-4b2e-a0e8-fffb9559393b
+spec:
+  configPatches:
+    - applyTo: NETWORK_FILTER
+      match:
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: MERGE
+        value:
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            access_log:
+              - name: envoy.access_loggers.file
+                typed_config:
+                  '@type': type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+                  format: |
+                    [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %UPSTREAM_HOST% %REQ(envoy.lb?name_out)% %REQ(envoy.lb?default)% "%DYNAMIC_METADATA(envoy.filters.http.lua)%" "%DYNAMIC_METADATA(envoy.filters.http.lua2)%" "%REQ(X-REQUEST-ID)%"
+                  path: /dev/stdout
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua", "inbound_a", "service-a")
+                a = request_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                if a then
+                  for key, value in pairs(a) do
+                    request_handle:headers():add('inbound_name', value)
+                  end
+                else
+                  print("Variable 'a' is empty or does not exist")
+                end
+              end
+              
+              function envoy_on_response(response_handle)
+                response_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua2", "as2", "value2")
+                b = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                if b then
+                  for key, value in pairs(a) do
+                    response_handle:headers():add('inbound_name', value)
+                  end
+                else
+                  print("Variable 'b' is empty or does not exist")
+                end
+              end
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_OUTBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add('outbound_name','SIDECAR_OUTBOUND')
+                a = request_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                if a then
+                  for key, value in pairs(a) do
+                    request_handle:headers():add('outbound_name', value)
+                  end
+                else
+                  print("OutBound Name Variable 'a' is empty or does not exist")
+                end
+                local shared_data = request_handle:streamInfo():dynamicMetadata()
+                shared_data:set("envoy.filters.http.lua", "a33", "value")
+                request_handle:headers():add('success_set_data', 'success')
+                for key, value in pairs(shared_data) do
+                  request_handle:headers():add('name22222', value)
+                end
+              end
+  workloadSelector:
+    labels:
+      service.istio.io/canonical-name: yk-service-b
