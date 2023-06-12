@@ -103,14 +103,13 @@ func handler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-
+	clientReq.Header.Add("X-Request-ID", req.Header.Get("X-Request-ID"))
 	serviceBResp := makeRequest(clientReq, "serviceB")
 
 	// Continue processing the request or send response to the client
 
 	fmt.Fprintln(w, "serviceA: Hello from serviceA!\n")
 	fmt.Fprintln(w, headers, "\n")
-	fmt.Fprintln(w, w.Header())
 	fmt.Fprintln(w, "\n-----------------------------------------------------------------------------------------\n")
 	fmt.Fprintln(w, serviceBResp)
 }
