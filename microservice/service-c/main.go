@@ -58,7 +58,8 @@ func handler(w http.ResponseWriter, req *http.Request) {
 
 	// Process the request or perform any operations
 	fmt.Fprintln(w, "serviceC: Hello from serviceC!\n")
-	fmt.Fprintln(w, headers)
+	fmt.Fprintln(w, headers, "\n")
+	fmt.Fprintln(w, w.Header())
 }
 
 func main() {
