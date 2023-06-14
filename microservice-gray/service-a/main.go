@@ -6,32 +6,35 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/uber/jaeger-client-go"
-	jaegercfg "github.com/uber/jaeger-client-go/config"
+	"github.com/uber/jaeger-client-go/transport"
+	"github.com/uber/jaeger-client-go/zipkin"
 	"io"
 	"log"
 	"net/http"
 	"os"
 )
 
+const TracingAnalysisEndpoint = "http://47.104.161.96:14268/api/traces"
+
 func initTracer(serviceName string) (opentracing.Tracer, io.Closer) {
-	//metricsFactory := prometheus.New()
-	cfg := jaegercfg.Configuration{
-		ServiceName: serviceName,
-		Sampler: &jaegercfg.SamplerConfig{
-			Type:  jaeger.SamplerTypeConst,
-			Param: 1,
-		},
-		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans:          true,
-			CollectorEndpoint: "http://47.104.161.96:14268/api/traces",
-		},
-	}
-	tracer, closer, err := cfg.NewTracer(
-		jaegercfg.Logger(jaeger.StdLogger),
+	zipkinPropagator := zipkin.NewZipkinB3HTTPHeaderPropagator()
+	injector := jaeger.TracerOptions.Injector(opentracing.HTTPHeaders, zipkinPropagator)
+	extractor := jaeger.TracerOptions.Extractor(opentracing.HTTPHeaders, zipkinPropagator)
+	// Zipkin shares span ID between client and server spans; it must be enabled via the following option.
+	zipkinSharedRPCSpan := jaeger.TracerOptions.ZipkinSharedRPCSpan(true)
+
+	tracer, closer := jaeger.NewTracer(
+		serviceName,
+		jaeger.NewConstSampler(true),
+		jaeger.NewRemoteReporter(
+			transport.NewHTTPTransport(TracingAnalysisEndpoint),
+			jaeger.ReporterOptions.Logger(jaeger.StdLogger),
+		),
+		injector,
+		extractor,
+		zipkinSharedRPCSpan,
 	)
-	if err != nil {
-		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
-	}
+	opentracing.SetGlobalTracer(tracer)
 	return tracer, closer
 }
 
@@ -84,7 +87,7 @@ func handler(w http.ResponseWriter, req *http.Request) {
 
 	tracer, closer := initTracer(serviceName)
 	defer closer.Close()
-	opentracing.SetGlobalTracer(tracer)
+
 	span := tracer.StartSpan("handler")
 	defer span.Finish()
 	ctx := context.Background()
