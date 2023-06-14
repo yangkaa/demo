@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
@@ -17,6 +16,7 @@ import (
 const TracingAnalysisEndpoint = "http://47.104.161.96:14268/api/traces"
 
 func initTracer(serviceName string) (opentracing.Tracer, io.Closer) {
+
 	zipkinPropagator := zipkin.NewZipkinB3HTTPHeaderPropagator()
 	injector := jaeger.TracerOptions.Injector(opentracing.HTTPHeaders, zipkinPropagator)
 	extractor := jaeger.TracerOptions.Extractor(opentracing.HTTPHeaders, zipkinPropagator)
@@ -88,10 +88,11 @@ func handler(w http.ResponseWriter, req *http.Request) {
 	tracer, closer := initTracer(serviceName)
 	defer closer.Close()
 
-	span := tracer.StartSpan("handler")
+	spanCtx, _ := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	span := tracer.StartSpan("handler", ext.RPCServerOption(spanCtx))
 	defer span.Finish()
-	ctx := context.Background()
-	ctx = opentracing.ContextWithSpan(ctx, span)
+
+	ctx := opentracing.ContextWithSpan(req.Context(), span)
 
 	// Make a request to serviceB
 	url := "http://localhost:8081"
