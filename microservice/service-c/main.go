@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
+	"io"
 	"log"
 	"net/http"
 
 	"github.com/opentracing/opentracing-go/ext"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
-	"github.com/uber/jaeger-lib/metrics/prometheus"
 )
 
-func initTracer(serviceName string) (opentracing.Tracer, error) {
-	metricsFactory := prometheus.New()
+func initTracer(serviceName string) (opentracing.Tracer, io.Closer) {
+	//metricsFactory := prometheus.New()
 	cfg := jaegercfg.Configuration{
 		ServiceName: serviceName,
 		Sampler: &jaegercfg.SamplerConfig{
@@ -21,19 +21,20 @@ func initTracer(serviceName string) (opentracing.Tracer, error) {
 			Param: 1,
 		},
 		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans:           true,
-			LocalAgentHostPort: "localhost:6831",
+			LogSpans:          true,
+			CollectorEndpoint: "http://47.104.161.96:14268/api/traces",
 		},
 	}
-	tracer, _, err := cfg.NewTracer(
-		jaegercfg.Metrics(metricsFactory),
+	tracer, closer, err := cfg.NewTracer(
+		jaegercfg.Logger(jaeger.StdLogger),
 	)
 	if err != nil {
-		log.Printf("Failed to create tracer: %v", err)
-		return nil, err
+		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
 	}
-	return tracer, nil
+	return tracer, closer
 }
+
+var serviceName = "service-c"
 
 func handler(w http.ResponseWriter, req *http.Request) {
 	// Get All Headers
@@ -46,14 +47,12 @@ func handler(w http.ResponseWriter, req *http.Request) {
 			headers += fmt.Sprintf("%s:   %v\n", key, v)
 		}
 	}
-	spanCtx, _ := opentracing.GlobalTracer().Extract(
-		opentracing.HTTPHeaders,
-		opentracing.HTTPHeadersCarrier(req.Header),
-	)
-	span := opentracing.GlobalTracer().StartSpan(
-		"operation_name",
-		ext.RPCServerOption(spanCtx),
-	)
+	fmt.Println(headers)
+	tracer, closer := initTracer(serviceName)
+	defer closer.Close()
+	opentracing.SetGlobalTracer(tracer)
+	spanCtx, _ := tracer.Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	span := tracer.StartSpan("handler", ext.RPCServerOption(spanCtx))
 	defer span.Finish()
 
 	// Process the request or perform any operations

@@ -1,18 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
 )
 
-func initTracer(serviceName string) (opentracing.Tracer, error) {
+func initTracer(serviceName string) (opentracing.Tracer, io.Closer) {
 	//metricsFactory := prometheus.New()
 	cfg := jaegercfg.Configuration{
 		ServiceName: serviceName,
@@ -21,43 +22,44 @@ func initTracer(serviceName string) (opentracing.Tracer, error) {
 			Param: 1,
 		},
 		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans:           true,
-			LocalAgentHostPort: "localhost:6831",
+			LogSpans:          true,
+			CollectorEndpoint: "http://47.104.161.96:14268/api/traces",
 		},
 	}
-	tracer, _, err := cfg.NewTracer(
-		//jaegercfg.Metrics(metricsFactory),
+	tracer, closer, err := cfg.NewTracer(
 		jaegercfg.Logger(jaeger.StdLogger),
 	)
 	if err != nil {
-		log.Printf("Failed to create tracer: %v", err)
-		return nil, err
+		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
 	}
-	return tracer, nil
+	return tracer, closer
 }
 
-func makeRequest(req *http.Request, serviceName string) string {
-	tracer, err := initTracer(serviceName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	span := tracer.StartSpan("operation_name")
+func makeRequest(req *http.Request) string {
+	span, _ := opentracing.StartSpanFromContext(
+		req.Context(),
+		"makeRequest",
+	)
 	defer span.Finish()
-	opentracing.GlobalTracer().Inject(
+	span.LogKV("event", "make req to B")
+	ext.SpanKindRPCClient.Set(span)
+	ext.HTTPUrl.Set(span, req.URL.String())
+	ext.HTTPMethod.Set(span, "GET")
+	span.Tracer().Inject(
 		span.Context(),
 		opentracing.HTTPHeaders,
 		opentracing.HTTPHeadersCarrier(req.Header),
 	)
-
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		ext.LogError(span, err)
 		log.Printf("Request failed: %v", err)
 		return ""
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Failed to read response body: %v", err)
 		return ""
@@ -65,6 +67,8 @@ func makeRequest(req *http.Request, serviceName string) string {
 
 	return fmt.Sprintf("%s\n", string(body))
 }
+
+var serviceName = "service-a"
 
 func handler(w http.ResponseWriter, req *http.Request) {
 	// Get All Headers
@@ -77,16 +81,14 @@ func handler(w http.ResponseWriter, req *http.Request) {
 			headers += fmt.Sprintf("%s:   %v\n", key, v)
 		}
 	}
-	//fmt.Println(headers)
-	spanCtx, _ := opentracing.GlobalTracer().Extract(
-		opentracing.HTTPHeaders,
-		opentracing.HTTPHeadersCarrier(req.Header),
-	)
-	span := opentracing.GlobalTracer().StartSpan(
-		"operation_name",
-		ext.RPCServerOption(spanCtx),
-	)
+
+	tracer, closer := initTracer(serviceName)
+	defer closer.Close()
+	opentracing.SetGlobalTracer(tracer)
+	span := tracer.StartSpan("handler")
 	defer span.Finish()
+	ctx := context.Background()
+	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Make a request to serviceB
 	url := "http://localhost:8081"
@@ -97,14 +99,14 @@ func handler(w http.ResponseWriter, req *http.Request) {
 	if os.Getenv("SERVICE_B_HOST") != "" && os.Getenv("SERVICE_B_PORT") != "" {
 		url = fmt.Sprintf("%s%s:%s", protocol, os.Getenv("SERVICE_B_HOST"), os.Getenv("SERVICE_B_PORT"))
 	}
-	clientReq, err := http.NewRequest(http.MethodGet, url, nil)
+	clientReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		log.Printf("Failed to create request: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	clientReq.Header.Add("X-Request-ID", req.Header.Get("X-Request-ID"))
-	serviceBResp := makeRequest(clientReq, "serviceB")
+	//clientReq.Header.Add("X-Request-ID", req.Header.Get("X-Request-ID"))
+	serviceBResp := makeRequest(clientReq)
 
 	// Continue processing the request or send response to the client
 
