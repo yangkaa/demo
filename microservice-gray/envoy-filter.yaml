@@ -1,0 +1,171 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: micro-yk
+  namespace: zhangqh
+  resourceVersion: "11324902"
+spec:
+  configPatches:
+    - applyTo: NETWORK_FILTER
+      match:
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: MERGE
+        value:
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            access_log:
+              - name: envoy.access_loggers.file
+                typed_config:
+                  '@type': type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+                  format: |
+                    [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %UPSTREAM_HOST% %REQ(envoy.lb?name)% %REQ(envoy.lb?default)% "%DYNAMIC_METADATA(envoy.filters.http.lua)%" "%DYNAMIC_METADATA(envoy.filters.http.lua2)%"
+                  path: /dev/stdout
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua2", "as2", "value2")
+                a = request_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua2")
+                request_handle:headers():add("aaa-key", a)
+              end
+              
+              function envoy_on_response(response_handle)
+                response_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua2", "as2", "value2")
+                a = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                response_handle:headers():add("aaa-key", a)
+              end
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_OUTBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add('name','123456')
+                local shared_data = request_handle:streamInfo():dynamicMetadata()
+                shared_data:set("envoy.filters.http.lua", "a33", "value")
+                request_handle:headers():add('name1', 'abababa')
+                for key, value in pairs(shared_data) do
+                  request_handle:headers():add('name22222', value)
+                  request_handle:headers():add("key", "value")
+                end
+              end
+  workloadSelector:
+    labels:
+      service.istio.io/canonical-name: yk-service-b
+
+
+
+
+
+
+
+
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  creationTimestamp: "2023-05-15T08:50:12Z"
+  generation: 11
+  labels:
+    app_id: ea2c2fbca187449498536c2e74d910cf
+  name: micro-yk
+  namespace: zhangqh
+  resourceVersion: "11352752"
+  uid: 646ec28f-086f-4b2e-a0e8-fffb9559393b
+spec:
+  configPatches:
+    - applyTo: NETWORK_FILTER
+      match:
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: MERGE
+        value:
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            access_log:
+              - name: envoy.access_loggers.file
+                typed_config:
+                  '@type': type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+                  format: |
+                    [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %UPSTREAM_HOST% %REQ(envoy.lb?name_out)% %REQ(envoy.lb?default)% "%DYNAMIC_METADATA(envoy.filters.http.lua)%" "%DYNAMIC_METADATA(envoy.filters.http.lua2)%" "%REQ(X-REQUEST-ID)%"
+                  path: /dev/stdout
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_INBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua2", "as2", "value2")
+                a = request_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                for key, value in pairs(a) do
+                  request_handle:headers():add('inbound_name', value)
+                end
+              end
+              
+              function envoy_on_response(response_handle)
+                response_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua2", "as2", "value2")
+                a = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                response_handle:headers():add("resp-aaa-key", a)
+              end
+    - applyTo: HTTP_FILTER
+      match:
+        context: SIDECAR_OUTBOUND
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.lua
+          typed_config:
+            '@type': type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+            inlineCode: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add('name_out','123456')
+                local shared_data = request_handle:streamInfo():dynamicMetadata()
+                shared_data:set("envoy.filters.http.lua", "a33", "value")
+                request_handle:headers():add('name1', 'abababa')
+                for key, value in pairs(shared_data) do
+                  request_handle:headers():add('name22222', value)
+                  request_handle:headers():add("key", "value")
+                end
+              end
+  workloadSelector:
+    labels:
+      service.istio.io/canonical-name: yk-service-b

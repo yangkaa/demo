@@ -1,0 +1,23 @@
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: service-a
+  namespace: zhangqh
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: bookinfo-gateway
+      namespace: zhangqh
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: test
+          namespace: zhangqh
+          port: 9090
+          weight: 100
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
