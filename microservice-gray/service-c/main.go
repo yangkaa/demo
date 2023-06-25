@@ -9,11 +9,19 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/opentracing/opentracing-go/ext"
 )
 
-const TracingAnalysisEndpoint = "http://47.104.161.96:14268/api/traces"
+var TracingAnalysisEndpoint = "http://47.104.161.96:14268/api/traces"
+
+func init() {
+	if os.Getenv("OTEL_EXPORTER_JAEGER_ENDPOINT") != "" {
+		TracingAnalysisEndpoint = os.Getenv("OTEL_EXPORTER_JAEGER_ENDPOINT")
+	}
+	log.Printf("TracingAnalysisEndpoint is : %v", TracingAnalysisEndpoint)
+}
 
 func initTracer(serviceName string) (opentracing.Tracer, io.Closer) {
 	zipkinPropagator := zipkin.NewZipkinB3HTTPHeaderPropagator()
